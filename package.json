@@ -1,6 +1,6 @@
 ```json
 {
-  "name": "subaq-paths-mobile",
+  "name": "m7-subaq-pro",
   "private": true,
   "version": "1.0.0",
   "type": "module",
@@ -24,4 +24,3 @@
 }
 
 ```
-
