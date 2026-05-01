@@ -1,6 +1,6 @@
 ```json
 {
-  "name": "m7-subaq-pro",
+  "name": "m7-subaq-final",
   "private": true,
   "version": "1.0.0",
   "type": "module",
@@ -24,3 +24,4 @@
 }
 
 ```
+
