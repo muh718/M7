@@ -1,1 +1,52 @@
+```css
+@import url('https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;900&family=Amiri:wght@700&display=swap');
+
+body { 
+  font-family: 'Tajawal', sans-serif; 
+  margin: 0;
+  background-color: #020617;
+  color: white;
+  user-select: none;
+  overflow: hidden;
+  position: fixed;
+  width: 100%;
+  height: 100%;
+}
+
+.classic-title { font-family: 'Amiri', serif; }
+
+.glass-main {
+  background: rgba(15, 23, 42, 0.98);
+  backdrop-filter: blur(40px);
+  border: 1px solid rgba(255,255,255,0.1);
+}
+
+.neon-glow { filter: drop-shadow(0 0 50px currentColor); opacity: 0.95; }
+
+.input-pro {
+  width: 100%;
+  background: rgba(30, 41, 59, 0.8);
+  border: 2px solid rgba(255,255,255,0.1);
+  color: #ffffff !important;
+  text-align: center;
+  padding: 1.5rem;
+  border-radius: 2rem;
+  font-size: 1.7rem;
+  font-weight: 700;
+  outline: none;
+}
+.input-pro::placeholder { color: rgba(255,255,255,0.3); font-weight: 400; }
+
+.win-text { font-size: clamp(2.5rem, 12vw, 10rem); font-weight: 900; line-height: 1.1; }
+.win-sub { font-size: clamp(1.2rem, 5vw, 3rem); opacity: 0.8; }
+.btn-action { font-size: clamp(1.1rem, 5vw, 2.5rem); padding: 1.5rem 3rem; border-radius: 2.5rem; font-weight: 900; }
+
+.hex-char { 
+  font-size: clamp(3.5rem, 10vw, 5.5rem); 
+  font-weight: 500;
+  fill: white;
+  pointer-events: none;
+}
+
+```
 
