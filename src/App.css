@@ -4,7 +4,7 @@
 body { 
   font-family: 'Tajawal', sans-serif; 
   margin: 0;
-  background-color: #020617;
+  background-color: #010409;
   color: white;
   user-select: none;
   overflow: hidden;
@@ -15,38 +15,38 @@ body {
 
 .classic-title { font-family: 'Amiri', serif; }
 
-.glass-main {
+.glass-panel {
   background: rgba(15, 23, 42, 0.98);
   backdrop-filter: blur(40px);
   border: 1px solid rgba(255,255,255,0.1);
 }
 
-.neon-glow { filter: drop-shadow(0 0 50px currentColor); opacity: 0.95; }
+.neon-glow { filter: drop-shadow(0 0 50px currentColor); }
 
+/* مدخلات الأسماء - نص أبيض ناصع */
 .input-pro {
   width: 100%;
-  background: rgba(30, 41, 59, 0.8);
-  border: 2px solid rgba(255,255,255,0.1);
-  color: #ffffff !important;
+  background: rgba(30, 41, 59, 1) !important;
+  border: 2px solid rgba(59, 130, 246, 0.4);
+  color: #ffffff !important; /* لون الخط أبيض */
   text-align: center;
   padding: 1.5rem;
   border-radius: 2rem;
-  font-size: 1.7rem;
+  font-size: 1.8rem;
   font-weight: 700;
   outline: none;
 }
 .input-pro::placeholder { color: rgba(255,255,255,0.3); font-weight: 400; }
 
-.win-text { font-size: clamp(2.5rem, 12vw, 10rem); font-weight: 900; line-height: 1.1; }
-.win-sub { font-size: clamp(1.2rem, 5vw, 3rem); opacity: 0.8; }
-.btn-action { font-size: clamp(1.1rem, 5vw, 2.5rem); padding: 1.5rem 3rem; border-radius: 2.5rem; font-weight: 900; }
+.win-title { font-size: clamp(2.5rem, 12vw, 10rem); font-weight: 900; line-height: 1.1; }
 
 .hex-char { 
-  font-size: clamp(3.5rem, 10vw, 5.5rem); 
-  font-weight: 500;
+  font-size: clamp(3.5rem, 11vw, 5.5rem); 
+  font-weight: 500; /* خط أنحف */
   fill: white;
   pointer-events: none;
 }
 
 ```
+
 
