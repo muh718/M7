@@ -1,4 +1,4 @@
-```react
+```javascript
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Trophy, RefreshCw, LogOut, Zap } from 'lucide-react';
 import { QUESTIONS_DATABASE } from './data/questions';
@@ -21,25 +21,21 @@ export default function App() {
   const [activeQ, setActiveQ] = useState(null);
   const [roundWinner, setRoundWinner] = useState(null);
   const [usedQs, setUsedQs] = useState(new Set());
-  const [pool, setPool] = useState([]);
 
   const shuffle = (arr) => [...arr].sort(() => Math.random() - 0.5);
 
-  const initSession = (rounds) => {
+  const startMatch = (rounds) => {
     setMatchRounds(rounds);
-    setPool(shuffle(QUESTIONS_DATABASE));
-    generateNewRound();
+    setupBoard();
     setView('GAME');
   };
 
-  const generateNewRound = useCallback(() => {
+  const setupBoard = useCallback(() => {
     const newGrid = [];
     const letters = shuffle("أبتثجحخدذرزسشصضطظعغفقكلمنهوي".split(""));
-    let idx = 0;
     for (let r = 0; r < GRID_SIZE; r++) {
       for (let c = 0; c < GRID_SIZE; c++) {
-        newGrid.push({ id: `${r}-${c}`, r, c, label: letters[idx % letters.length], owner: null });
-        idx++;
+        newGrid.push({ id: `${r}-${c}`, r, c, label: letters[(r*GRID_SIZE+c) % letters.length], owner: null });
       }
     }
     setGrid(newGrid);
@@ -48,11 +44,11 @@ export default function App() {
   }, []);
 
   const config = useMemo(() => {
-    const isP1Vertical = currentRound % 2 !== 0;
+    const isP1V = currentRound % 2 !== 0;
     return {
-      P1: { dir: isP1Vertical ? 'VERT' : 'HORIZ', color: '#10b981' },
-      P2: { dir: isP1Vertical ? 'HORIZ' : 'VERT', color: '#ef4444' },
-      bg: { vSide: isP1Vertical ? '#10b981' : '#ef4444', hSide: isP1Vertical ? '#ef4444' : '#10b981' }
+      P1: { dir: isP1V ? 'VERT' : 'HORIZ', color: '#10b981' },
+      P2: { dir: isP1V ? 'HORIZ' : 'VERT', color: '#ef4444' },
+      bg: { vSide: isP1V ? '#10b981' : '#ef4444', hSide: isP1V ? '#ef4444' : '#10b981' }
     };
   }, [currentRound]);
 
@@ -68,10 +64,9 @@ export default function App() {
       if (visited.has(key)) continue;
       visited.add(key);
       if (dir === 'VERT' ? curr.r === GRID_SIZE - 1 : curr.c === 0) return true;
-      const parity = curr.r % 2;
-      const offsets = parity === 0 ? [[0, -1], [0, 1], [-1, -1], [-1, 0], [1, -1], [1, 0]] : [[0, -1], [0, 1], [-1, 0], [-1, 1], [1, 0], [1, 1]];
+      const offsets = curr.r % 2 === 0 ? [[0,-1],[0,1],[-1,-1],[-1,0],[1,-1],[1,0]] : [[0,-1],[0,1],[-1,0],[-1,1],[1,0],[1,1]];
       offsets.forEach(([dr, dc]) => {
-        const nb = currentGrid.find(n => n.r === curr.r + dr && n.c === curr.c + dc);
+        const nb = currentGrid.find(n => n.r === curr.r+dr && n.c === curr.c+dc);
         if (nb && nb.owner === player && !visited.has(`${nb.r}-${nb.c}`)) queue.push(nb);
       });
     }
@@ -80,7 +75,8 @@ export default function App() {
 
   const handleTileClick = (tile) => {
     if (tile.owner || roundWinner) return;
-    const nextQ = pool.find(q => !usedQs.has(q.q)) || QUESTIONS_DATABASE[Math.floor(Math.random()*QUESTIONS_DATABASE.length)];
+    const available = QUESTIONS_DATABASE.filter(q => !usedQs.has(q.q));
+    const nextQ = available.length > 0 ? available[Math.floor(Math.random()*available.length)] : QUESTIONS_DATABASE[0];
     setActiveQ({ tile, q: nextQ.q, opts: shuffle(nextQ.a), ans: nextQ.a[0] });
   };
 
@@ -95,11 +91,7 @@ export default function App() {
         const nextScores = { ...scores, [turn]: scores[turn] + 1 };
         setScores(nextScores);
         setRoundWinner(turn);
-        const majority = Math.floor(matchRounds / 2) + 1;
-        setTimeout(() => {
-          if (nextScores[turn] >= majority) setView('MATCH_OVER');
-          else setView('ROUND_OVER');
-        }, 1000);
+        setTimeout(() => setView(nextScores[turn] >= Math.floor(matchRounds/2)+1 ? 'MATCH_OVER' : 'ROUND_OVER'), 1000);
       }
     }
     setGrid(newGrid);
@@ -107,23 +99,17 @@ export default function App() {
     if (!roundWinner) setTurn(turn === 'P1' ? 'P2' : 'P1');
   };
 
-  const resetAll = () => {
-    setScores({ P1: 0, P2: 0 });
-    setCurrentRound(1);
-    setUsedQs(new Set());
-    setPNames({ p1: '', p2: '' });
-    setView('START');
-  };
+  const resetAll = () => { setScores({P1:0, P2:0}); setCurrentRound(1); setUsedQs(new Set()); setPNames({p1:'', p2:''}); setView('START'); };
 
   return (
     <div className="fixed inset-0 flex flex-col bg-[#010409] overflow-hidden">
       {view === 'START' && (
         <div className="flex-1 flex flex-col items-center justify-center p-6 space-y-12 animate-in fade-in">
           <h1 className="text-7xl md:text-[10rem] classic-title font-black text-transparent bg-clip-text bg-gradient-to-b from-white to-blue-500 text-center">سباق المسارات</h1>
-          <div className="glass-panel p-8 md:p-14 rounded-[3.5rem] w-full max-w-xl space-y-6 shadow-2xl">
-            <input type="text" placeholder="المتسابق الأول" className="input-pro" value={pNames.p1} onChange={e => setPNames({...pNames, p1: e.target.value})} />
-            <input type="text" placeholder="المتسابق الثاني" className="input-pro" value={pNames.p2} onChange={e => setPNames({...pNames, p2: e.target.value})} />
-            <button onClick={() => setView('ROUND_SELECT')} disabled={!pNames.p1 || !pNames.p2} className="w-full bg-blue-600 py-7 rounded-3xl font-black text-3xl transition-all">استمرار</button>
+          <div className="glass-box p-8 md:p-14 rounded-[3.5rem] w-full max-w-xl space-y-6">
+            <input type="text" placeholder="المتسابق الأول" className="input-name" value={pNames.p1} onChange={e => setPNames({...pNames, p1: e.target.value})} />
+            <input type="text" placeholder="المتسابق الثاني" className="input-name" value={pNames.p2} onChange={e => setPNames({...pNames, p2: e.target.value})} />
+            <button onClick={() => setView('ROUND_SELECT')} disabled={!pNames.p1 || !pNames.p2} className="w-full bg-blue-600 py-7 rounded-3xl font-black text-3xl">استمرار</button>
           </div>
         </div>
       )}
@@ -133,28 +119,18 @@ export default function App() {
           <Trophy size={100} className="text-yellow-500 animate-bounce mx-auto" />
           <h2 className="text-5xl md:text-8xl font-black classic-title">حدد طول المنافسة</h2>
           <div className="grid grid-cols-2 gap-6 w-full max-w-2xl px-4">
-             {[1, 3, 5, 7].map(num => (
-               <button key={num} onClick={() => initSession(num)} className="group p-10 bg-slate-900 border-4 border-slate-700 rounded-[3rem] hover:border-blue-500">
-                  <span className="text-7xl md:text-9xl font-black block mb-2">{num}</span>
-                  <span className="text-sm font-bold text-slate-500 uppercase">جولات</span>
-               </button>
-             ))}
+             {[1, 3, 5, 7].map(num => (<button key={num} onClick={() => startMatch(num)} className="p-10 bg-slate-900 border-4 border-slate-700 rounded-[3rem] hover:border-blue-500"><span className="text-7xl md:text-9xl font-black block mb-2">{num}</span><span className="text-sm font-bold uppercase">جولات</span></button>))}
           </div>
         </div>
       )}
 
       {view === 'GAME' && (
         <div className="flex-1 flex flex-col h-full overflow-hidden animate-in fade-in">
-          <header className="p-3 md:p-6 glass-panel flex justify-between items-center z-50 border-b border-white/5">
-            <div className={`p-2 px-5 rounded-2xl border-2 flex flex-col items-center transition-all ${turn === 'P1' ? 'ring-4 ring-emerald-500/40 bg-emerald-500/20' : 'opacity-20 grayscale'}`} style={{ borderColor: '#10b981' }}>
-              <div className="text-lg md:text-3xl font-black">{pNames.p1.split(' ')[0]} • {scores.P1}</div>
-            </div>
-            <div className="classic-title text-xl md:text-4xl font-black">جولة {currentRound} / {matchRounds}</div>
-            <div className={`p-2 px-5 rounded-2xl border-2 flex flex-col items-center transition-all ${turn === 'P2' ? 'ring-4 ring-rose-500/40 bg-rose-500/20' : 'opacity-20 grayscale'}`} style={{ borderColor: '#ef4444' }}>
-              <div className="text-lg md:text-3xl font-black">{pNames.p2.split(' ')[0]} • {scores.P2}</div>
-            </div>
+          <header className="p-3 md:p-6 glass-box flex justify-between items-center z-50 border-b border-white/5 shadow-2xl">
+            <div className={`p-2 px-5 rounded-2xl border-2 flex flex-col items-center transition-all ${turn === 'P1' ? 'ring-4 ring-emerald-500/40 bg-emerald-500/20' : 'opacity-20 grayscale'}`} style={{ borderColor: '#10b981' }}><div className="text-lg md:text-3xl font-black">{pNames.p1.split(' ')[0]} • {scores.P1}</div></div>
+            <div className="classic-title text-xl md:text-4xl font-black text-white">جولة {currentRound} / {matchRounds}</div>
+            <div className={`p-2 px-5 rounded-2xl border-2 flex flex-col items-center transition-all ${turn === 'P2' ? 'ring-4 ring-rose-500/40 bg-rose-500/20' : 'opacity-20 grayscale'}`} style={{ borderColor: '#ef4444' }}><div className="text-lg md:text-3xl font-black">{pNames.p2.split(' ')[0]} • {scores.P2}</div></div>
           </header>
-
           <main className="flex-1 flex items-center justify-center relative">
              <div className="w-full h-full flex items-center justify-center">
                 <svg viewBox={`0 0 ${VB_WIDTH} ${VB_HEIGHT}`} className="w-full h-full max-w-full max-h-[85vh] overflow-visible">
@@ -166,8 +142,7 @@ export default function App() {
                     </g>
                     {grid.map(c => {
                       const hw = Math.sqrt(3) * HEX_RADIUS;
-                      const xOff = (c.r % 2 === 0) ? 0 : (hw / 2);
-                      const cx = (c.c * hw) + xOff + (hw / 2);
+                      const cx = (c.c * hw) + (c.r % 2 === 0 ? 0 : hw / 2) + (hw / 2);
                       const cy = (c.r * (2 * HEX_RADIUS * 0.75)) + HEX_RADIUS;
                       return (
                         <g key={c.id} className="cursor-pointer active:scale-95 transition-transform" onClick={() => handleTileClick(c)}>
@@ -185,17 +160,11 @@ export default function App() {
 
       {activeQ && (
         <div className="fixed inset-0 bg-black/99 z-[100] flex items-center justify-center p-4 animate-in fade-in backdrop-blur-3xl text-center">
-          <div className="glass-panel border-4 w-full max-w-6xl rounded-[4rem] md:rounded-[6rem] shadow-2xl overflow-hidden animate-in zoom-in" style={{ borderColor: turn === 'P1' ? '#10b981' : '#ef4444' }}>
-            <div className="p-8 md:p-14 border-b border-white/10">
-                <div className="text-4xl md:text-8xl font-black classic-title text-white">سؤال التحدي</div>
-            </div>
+          <div className="glass-box border-4 w-full max-w-6xl rounded-[4rem] md:rounded-[6rem] shadow-2xl overflow-hidden animate-in zoom-in" style={{ borderColor: turn === 'P1' ? '#10b981' : '#ef4444' }}>
+            <div className="p-8 md:p-14 border-b border-white/10"><div className="text-blue-400 text-sm font-black uppercase mb-2">دور المتسابق: {turn === 'P1' ? pNames.p1 : pNames.p2}</div><div className="text-4xl md:text-8xl font-black classic-title text-white">سؤال التحدي</div></div>
             <div className="p-8 md:p-24 space-y-12 overflow-y-auto max-h-[70vh]">
               <h3 className="text-3xl md:text-[5.5rem] leading-tight font-black text-white">{activeQ.q}</h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {activeQ.opts.map((o, i) => (
-                  <button key={i} onClick={() => submitAnswer(o)} className="p-10 md:p-16 bg-slate-800 hover:bg-blue-700 rounded-[3rem] border-2 border-white/10 text-2xl md:text-6xl font-black text-white active:scale-95 shadow-xl">{o}</button>
-                ))}
-              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">{activeQ.opts.map((o, i) => (<button key={i} onClick={() => submitAnswer(o)} className="p-10 md:p-16 bg-slate-800 hover:bg-blue-700 rounded-[3rem] border-2 border-white/10 text-2xl md:text-6xl font-black text-white active:scale-95 shadow-xl">{o}</button>))}</div>
             </div>
           </div>
         </div>
@@ -204,19 +173,16 @@ export default function App() {
       {view === 'ROUND_OVER' && (
         <div className="fixed inset-0 bg-[#020617] z-[200] flex flex-col items-center justify-center p-6 animate-in zoom-in text-center">
           <Zap size={150} className={`mx-auto animate-pulse ${roundWinner === 'P1' ? 'text-emerald-400' : 'text-rose-400'}`} />
-          <h2 className="win-title classic-title text-white my-10">فاز {roundWinner === 'P1' ? pNames.p1 : pNames.p2}</h2>
-          <button onClick={() => { setCurrentRound(prev => prev + 1); generateNewRound(); setView('GAME'); }} className="px-16 py-8 bg-blue-600 rounded-[3rem] text-white font-black text-3xl md:text-6xl flex items-center gap-6 shadow-2xl"><RefreshCw size={50} /> الجولة التالية</button>
+          <h2 className="win-text classic-title text-white my-10">فاز {roundWinner === 'P1' ? pNames.p1 : pNames.p2}</h2>
+          <button onClick={() => { setCurrentRound(prev => prev + 1); setupBoard(); setView('GAME'); }} className="px-16 py-8 bg-blue-600 rounded-[3rem] text-white font-black text-3xl md:text-6xl flex items-center gap-6"><RefreshCw size={50} /> الجولة التالية</button>
         </div>
       )}
 
       {view === 'MATCH_OVER' && (
         <div className="fixed inset-0 bg-[#020617] z-[300] flex flex-col items-center justify-center p-6 animate-in zoom-in text-center overflow-hidden">
-          <Trophy size={200} className="text-yellow-400 mx-auto drop-shadow-2xl mb-8" />
+          <Trophy size={200} className="text-yellow-400 mx-auto animate-bounce mb-8" />
           <h2 className="win-title classic-title text-white">بطل المسابقة!</h2>
-          <div className="py-8">
-              <p className="win-subtitle text-white/70">ألف مبروك للفائز</p>
-              <p className={`win-title ${scores.P1 > scores.P2 ? 'text-emerald-400' : 'text-rose-400'}`}>{scores.P1 > scores.P2 ? pNames.p1 : pNames.p2}</p>
-          </div>
+          <div className="py-8"><p className="win-sub text-white/70">ألف مبروك للفائز</p><p className={`win-title ${scores.P1 > scores.P2 ? 'text-emerald-400' : 'text-rose-400'}`}>{scores.P1 > scores.P2 ? pNames.p1 : pNames.p2}</p></div>
           <button onClick={resetAll} className="mt-12 px-16 py-8 bg-white text-blue-950 font-black text-3xl md:text-7xl rounded-[4rem] shadow-2xl">بدء مسابقة جديدة</button>
         </div>
       )}
