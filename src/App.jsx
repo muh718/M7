@@ -1,193 +1,262 @@
-```javascript
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { Trophy, RefreshCw, LogOut, Zap } from 'lucide-react';
-import { QUESTIONS_DATABASE } from './data/questions';
-import './App.css';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { User, Users, RefreshCw, Trophy, AlertCircle, XCircle, ChevronLeft, BookOpen, Atom, Globe, History, Brain, Calculator, Trophy as SportIcon } from 'lucide-react';
+import { questionsBank } from './questions_data';
 
-const GRID_SIZE = 5;
-const HEX_RADIUS = 100;
-const HEX_WIDTH = Math.sqrt(3) * HEX_RADIUS; 
-const VB_WIDTH = (GRID_SIZE * HEX_WIDTH) + (HEX_WIDTH / 2);
-const VB_HEIGHT = ((GRID_SIZE - 1) * (2 * HEX_RADIUS * 0.75)) + (2 * HEX_RADIUS);
+const ROWS = 5;
+const COLS = 5;
+
+// قائمة المواضيع وتوزيعها على الشبكة
+const CATEGORIES = [
+  { name: "إسلاميات", icon: <BookOpen size={16} />, color: "bg-emerald-500" },
+  { name: "علوم", icon: <Atom size={16} />, color: "bg-blue-500" },
+  { name: "جغرافيا", icon: <Globe size={16} />, color: "bg-cyan-500" },
+  { name: "تاريخ", icon: <History size={16} />, color: "bg-amber-500" },
+  { name: "ألغاز", icon: <Brain size={16} />, color: "bg-purple-500" },
+  { name: "رياضيات", icon: <Calculator size={16} />, color: "bg-rose-500" },
+  { name: "لغة وأدب", icon: <SportIcon size={16} />, color: "bg-orange-500" }
+];
 
 export default function App() {
-  const [view, setView] = useState('START'); 
-  const [pNames, setPNames] = useState({ p1: '', p2: '' });
-  const [matchRounds, setMatchRounds] = useState(3);
-  const [currentRound, setCurrentRound] = useState(1);
-  const [scores, setScores] = useState({ P1: 0, P2: 0 });
+  const [gameState, setGameState] = useState('LOBBY');
+  const [playersCount, setPlayersCount] = useState(1);
+  const [playerNames, setPlayerNames] = useState({ p1: '', p2: '' });
   const [grid, setGrid] = useState([]);
-  const [turn, setTurn] = useState('P1');
-  const [activeQ, setActiveQ] = useState(null);
-  const [roundWinner, setRoundWinner] = useState(null);
-  const [usedQs, setUsedQs] = useState(new Set());
+  const [activeCell, setActiveCell] = useState(null);
+  const [currentQuestion, setCurrentQuestion] = useState(null);
+  const [currentPlayer, setCurrentPlayer] = useState(1);
+  const [stats, setStats] = useState({ correct: 0, total: 0 });
+  const [winningPath, setWinningPath] = useState([]);
+  const [celebrating, setCelebrating] = useState(false);
 
-  const shuffle = (arr) => [...arr].sort(() => Math.random() - 0.5);
+  // منطق اختيار الأسئلة (عدم التكرار لمدة 24 ساعة)
+  const getQuestionForCategory = useCallback((categoryName) => {
+    const KEY = 'radwa_used_questions_v3';
+    const used = JSON.parse(localStorage.getItem(KEY) || '[]');
+    const now = Date.now();
+    const ONE_DAY = 24 * 60 * 60 * 1000;
 
-  const startMatch = (rounds) => {
-    setMatchRounds(rounds);
-    setupBoard();
-    setView('GAME');
-  };
+    const validUsed = used.filter(item => now - item.time < ONE_DAY);
+    const usedIds = validUsed.map(item => item.id);
 
-  const setupBoard = useCallback(() => {
-    const newGrid = [];
-    const letters = shuffle("أبتثجحخدذرزسشصضطظعغفقكلمنهوي".split(""));
-    for (let r = 0; r < GRID_SIZE; r++) {
-      for (let c = 0; c < GRID_SIZE; c++) {
-        newGrid.push({ id: `${r}-${c}`, r, c, label: letters[(r*GRID_SIZE+c) % letters.length], owner: null });
-      }
+    // تصفية الأسئلة المتاحة لهذا التصنيف فقط
+    let available = questionsBank.filter(q => q.category === categoryName && !usedIds.includes(q.id));
+
+    if (available.length === 0) {
+      // إذا نفدت أسئلة هذا القسم، نعيد استخدامها
+      available = questionsBank.filter(q => q.category === categoryName);
     }
-    setGrid(newGrid);
-    setTurn('P1');
-    setRoundWinner(null);
+
+    const selected = available[Math.floor(Math.random() * available.length)];
+    
+    // تحديث التخزين
+    const newUsed = [...validUsed, { id: selected.id, time: now }];
+    localStorage.setItem(KEY, JSON.stringify(newUsed));
+
+    return selected;
   }, []);
 
-  const config = useMemo(() => {
-    const isP1V = currentRound % 2 !== 0;
-    return {
-      P1: { dir: isP1V ? 'VERT' : 'HORIZ', color: '#10b981' },
-      P2: { dir: isP1V ? 'HORIZ' : 'VERT', color: '#ef4444' },
-      bg: { vSide: isP1V ? '#10b981' : '#ef4444', hSide: isP1V ? '#ef4444' : '#10b981' }
-    };
-  }, [currentRound]);
-
-  const checkWin = (currentGrid, player) => {
-    const dir = config[player].dir;
-    const starts = currentGrid.filter(cell => cell.owner === player && (dir === 'VERT' ? cell.r === 0 : cell.c === GRID_SIZE - 1));
-    if (starts.length === 0) return false;
-    const visited = new Set();
-    const queue = [...starts];
-    while (queue.length > 0) {
-      const curr = queue.shift();
-      const key = `${curr.r}-${curr.c}`;
-      if (visited.has(key)) continue;
-      visited.add(key);
-      if (dir === 'VERT' ? curr.r === GRID_SIZE - 1 : curr.c === 0) return true;
-      const offsets = curr.r % 2 === 0 ? [[0,-1],[0,1],[-1,-1],[-1,0],[1,-1],[1,0]] : [[0,-1],[0,1],[-1,0],[-1,1],[1,0],[1,1]];
-      offsets.forEach(([dr, dc]) => {
-        const nb = currentGrid.find(n => n.r === curr.r+dr && n.c === curr.c+dc);
-        if (nb && nb.owner === player && !visited.has(`${nb.r}-${nb.c}`)) queue.push(nb);
-      });
-    }
-    return false;
+  const initGame = () => {
+    // توزيع المواضيع عشوائياً على الخلايا الـ 25
+    const newGrid = Array(ROWS * COLS).fill(null).map((_, i) => {
+      const cat = CATEGORIES[Math.floor(Math.random() * CATEGORIES.length)];
+      return {
+        id: i,
+        status: 'empty',
+        player: null,
+        r: Math.floor(i / COLS),
+        c: i % COLS,
+        category: cat.name,
+        catColor: cat.color
+      };
+    });
+    setGrid(newGrid);
+    setStats({ correct: 0, total: 0 });
+    setCurrentPlayer(1);
+    setGameState('PLAYING');
+    setWinningPath([]);
   };
 
-  const handleTileClick = (tile) => {
-    if (tile.owner || roundWinner) return;
-    const available = QUESTIONS_DATABASE.filter(q => !usedQs.has(q.q));
-    const nextQ = available.length > 0 ? available[Math.floor(Math.random()*available.length)] : QUESTIONS_DATABASE[0];
-    setActiveQ({ tile, q: nextQ.q, opts: shuffle(nextQ.a), ans: nextQ.a[0] });
+  const openCell = (cellId) => {
+    if (celebrating || grid[cellId].status !== 'empty') return;
+    const category = grid[cellId].category;
+    const q = getQuestionForCategory(category);
+    setCurrentQuestion(q);
+    setActiveCell(cellId);
   };
 
-  const submitAnswer = (opt) => {
-    const isCorrect = opt === activeQ.ans;
-    const newGrid = [...grid];
-    const idx = newGrid.findIndex(t => t.id === activeQ.tile.id);
-    if (isCorrect) {
-      newGrid[idx].owner = turn;
-      setUsedQs(prev => new Set(prev).add(activeQ.q));
-      if (checkWin(newGrid, turn)) {
-        const nextScores = { ...scores, [turn]: scores[turn] + 1 };
-        setScores(nextScores);
-        setRoundWinner(turn);
-        setTimeout(() => setView(nextScores[turn] >= Math.floor(matchRounds/2)+1 ? 'MATCH_OVER' : 'ROUND_OVER'), 1000);
+  // خوارزمية البحث عن الجيران للسداسيات
+  const getNeighbors = (index) => {
+    const r = Math.floor(index / COLS), c = index % COLS, p = r % 2;
+    const dirs = [[0, 1], [0, -1], [1, 0], [-1, 0], [1, p === 0 ? -1 : 1], [-1, p === 0 ? -1 : 1]];
+    return dirs.map(([dr, dc]) => {
+      const nr = r + dr, nc = c + dc;
+      return (nr >= 0 && nr < ROWS && nc >= 0 && nc < COLS) ? nr * COLS + nc : null;
+    }).filter(n => n !== null);
+  };
+
+  const checkWinner = (tempGrid, p, vertical) => {
+    const starts = tempGrid.filter(cell => (vertical ? cell.r === 0 : cell.c === 0) && 
+      (playersCount === 1 && vertical ? cell.status === 'wrong' : (cell.status === 'correct' && cell.player === p))).map(c => c.id);
+    if (!starts.length) return null;
+    const q = starts.map(id => [id, [id]]), v = new Set(starts);
+    while (q.length) {
+      const [curr, path] = q.shift();
+      if (vertical ? tempGrid[curr].r === ROWS - 1 : tempGrid[curr].c === COLS - 1) return path;
+      for (const n of getNeighbors(curr)) {
+        if (!v.has(n) && (playersCount === 1 && vertical ? tempGrid[n].status === 'wrong' : (tempGrid[n].status === 'correct' && tempGrid[n].player === p))) {
+          v.add(n); q.push([n, [...path, n]]);
+        }
       }
     }
-    setGrid(newGrid);
-    setActiveQ(null);
-    if (!roundWinner) setTurn(turn === 'P1' ? 'P2' : 'P1');
+    return null;
   };
 
-  const resetAll = () => { setScores({P1:0, P2:0}); setCurrentRound(1); setUsedQs(new Set()); setPNames({p1:'', p2:''}); setView('START'); };
+  const handleAnswer = (isCorrect) => {
+    const newGrid = [...grid];
+    const cell = { ...newGrid[activeCell] };
+    if (isCorrect) {
+      cell.status = 'correct'; cell.player = currentPlayer;
+      setStats(s => ({ ...s, correct: s.correct + 1, total: s.total + 1 }));
+    } else {
+      cell.status = playersCount === 1 ? 'wrong' : 'blocked';
+      cell.player = playersCount === 1 ? null : 0;
+      setStats(s => ({ ...s, total: s.total + 1 }));
+    }
+    newGrid[activeCell] = cell;
+    setGrid(newGrid);
+    setActiveCell(null);
+
+    const win = checkWinner(newGrid, 1, false);
+    const loss = checkWinner(newGrid, 2, true);
+
+    if (win) { setWinningPath(win); setCelebrating(true); setTimeout(() => setGameState('WON'), 2000); }
+    else if (loss) { setWinningPath(loss); setCelebrating(true); setTimeout(() => setGameState('LOST'), 2000); }
+    else if (playersCount === 2) setCurrentPlayer(p => p === 1 ? 2 : 1);
+  };
 
   return (
-    <div className="fixed inset-0 flex flex-col bg-[#010409] overflow-hidden">
-      {view === 'START' && (
-        <div className="flex-1 flex flex-col items-center justify-center p-6 space-y-12 animate-in fade-in">
-          <h1 className="text-7xl md:text-[10rem] classic-title font-black text-transparent bg-clip-text bg-gradient-to-b from-white to-blue-500 text-center">سباق المسارات</h1>
-          <div className="glass-box p-8 md:p-14 rounded-[3.5rem] w-full max-w-xl space-y-6">
-            <input type="text" placeholder="المتسابق الأول" className="input-name" value={pNames.p1} onChange={e => setPNames({...pNames, p1: e.target.value})} />
-            <input type="text" placeholder="المتسابق الثاني" className="input-name" value={pNames.p2} onChange={e => setPNames({...pNames, p2: e.target.value})} />
-            <button onClick={() => setView('ROUND_SELECT')} disabled={!pNames.p1 || !pNames.p2} className="w-full bg-blue-600 py-7 rounded-3xl font-black text-3xl">استمرار</button>
-          </div>
-        </div>
-      )}
-
-      {view === 'ROUND_SELECT' && (
-        <div className="flex-1 flex flex-col items-center justify-center p-6 space-y-12 animate-in zoom-in text-center">
-          <Trophy size={100} className="text-yellow-500 animate-bounce mx-auto" />
-          <h2 className="text-5xl md:text-8xl font-black classic-title">حدد طول المنافسة</h2>
-          <div className="grid grid-cols-2 gap-6 w-full max-w-2xl px-4">
-             {[1, 3, 5, 7].map(num => (<button key={num} onClick={() => startMatch(num)} className="p-10 bg-slate-900 border-4 border-slate-700 rounded-[3rem] hover:border-blue-500"><span className="text-7xl md:text-9xl font-black block mb-2">{num}</span><span className="text-sm font-bold uppercase">جولات</span></button>))}
-          </div>
-        </div>
-      )}
-
-      {view === 'GAME' && (
-        <div className="flex-1 flex flex-col h-full overflow-hidden animate-in fade-in">
-          <header className="p-3 md:p-6 glass-box flex justify-between items-center z-50 border-b border-white/5 shadow-2xl">
-            <div className={`p-2 px-5 rounded-2xl border-2 flex flex-col items-center transition-all ${turn === 'P1' ? 'ring-4 ring-emerald-500/40 bg-emerald-500/20' : 'opacity-20 grayscale'}`} style={{ borderColor: '#10b981' }}><div className="text-lg md:text-3xl font-black">{pNames.p1.split(' ')[0]} • {scores.P1}</div></div>
-            <div className="classic-title text-xl md:text-4xl font-black text-white">جولة {currentRound} / {matchRounds}</div>
-            <div className={`p-2 px-5 rounded-2xl border-2 flex flex-col items-center transition-all ${turn === 'P2' ? 'ring-4 ring-rose-500/40 bg-rose-500/20' : 'opacity-20 grayscale'}`} style={{ borderColor: '#ef4444' }}><div className="text-lg md:text-3xl font-black">{pNames.p2.split(' ')[0]} • {scores.P2}</div></div>
-          </header>
-          <main className="flex-1 flex items-center justify-center relative">
-             <div className="w-full h-full flex items-center justify-center">
-                <svg viewBox={`0 0 ${VB_WIDTH} ${VB_HEIGHT}`} className="w-full h-full max-w-full max-h-[85vh] overflow-visible">
-                    <g className="neon-glow opacity-95">
-                        <rect x={0} y={-400} width={VB_WIDTH} height={500} fill={config.bg.vSide} />
-                        <rect x={0} y={VB_HEIGHT-100} width={VB_WIDTH} height={500} fill={config.bg.vSide} />
-                        <rect x={-400} y={0} width={500} height={VB_HEIGHT} fill={config.bg.hSide} />
-                        <rect x={VB_WIDTH-100} y={0} width={500} height={VB_HEIGHT} fill={config.bg.hSide} />
-                    </g>
-                    {grid.map(c => {
-                      const hw = Math.sqrt(3) * HEX_RADIUS;
-                      const cx = (c.c * hw) + (c.r % 2 === 0 ? 0 : hw / 2) + (hw / 2);
-                      const cy = (c.r * (2 * HEX_RADIUS * 0.75)) + HEX_RADIUS;
-                      return (
-                        <g key={c.id} className="cursor-pointer active:scale-95 transition-transform" onClick={() => handleTileClick(c)}>
-                          <polygon points={Array.from({length: 6}).map((_, i) => `${cx + HEX_RADIUS * Math.cos((Math.PI/180)*(60*i-30))},${cy + HEX_RADIUS * Math.sin((Math.PI/180)*(60*i-30))}`).join(' ')} fill={c.owner === 'P1' ? "#10b981" : c.owner === 'P2' ? "#ef4444" : "#1a2233"} stroke={c.owner ? "#ffffff" : "#334155"} strokeWidth="6" />
-                          {!c.owner && <text x={cx} y={cy} textAnchor="middle" dominantBaseline="central" className="hex-char">{c.label}</text>}
-                        </g>
-                      );
-                    })}
-                </svg>
-             </div>
-          </main>
-          <footer className="p-4 flex justify-center z-50"><button onClick={resetAll} className="text-rose-400 font-bold px-6 py-2 rounded-full border border-rose-500/20">خروج</button></footer>
-        </div>
-      )}
-
-      {activeQ && (
-        <div className="fixed inset-0 bg-black/99 z-[100] flex items-center justify-center p-4 animate-in fade-in backdrop-blur-3xl text-center">
-          <div className="glass-box border-4 w-full max-w-6xl rounded-[4rem] md:rounded-[6rem] shadow-2xl overflow-hidden animate-in zoom-in" style={{ borderColor: turn === 'P1' ? '#10b981' : '#ef4444' }}>
-            <div className="p-8 md:p-14 border-b border-white/10"><div className="text-blue-400 text-sm font-black uppercase mb-2">دور المتسابق: {turn === 'P1' ? pNames.p1 : pNames.p2}</div><div className="text-4xl md:text-8xl font-black classic-title text-white">سؤال التحدي</div></div>
-            <div className="p-8 md:p-24 space-y-12 overflow-y-auto max-h-[70vh]">
-              <h3 className="text-3xl md:text-[5.5rem] leading-tight font-black text-white">{activeQ.q}</h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">{activeQ.opts.map((o, i) => (<button key={i} onClick={() => submitAnswer(o)} className="p-10 md:p-16 bg-slate-800 hover:bg-blue-700 rounded-[3rem] border-2 border-white/10 text-2xl md:text-6xl font-black text-white active:scale-95 shadow-xl">{o}</button>))}</div>
+    <div className="min-h-screen bg-slate-950 text-white font-sans p-4 select-none" dir="rtl">
+      <style>{`@import url('https://fonts.googleapis.com/css2?family=Amiri:wght@700&family=Tajawal:wght@400;700;900&display=swap'); body { font-family: 'Tajawal', sans-serif; }`}</style>
+      
+      {gameState === 'LOBBY' && (
+        <div className="flex flex-col items-center justify-center min-h-[85vh] animate-in fade-in duration-700">
+          <div className="w-full max-w-md bg-slate-900 border-t-8 border-emerald-600 p-10 rounded-[3rem] shadow-2xl text-center">
+            <h1 className="text-4xl font-black mb-2">ثانوية رضوى</h1>
+            <p className="text-xl text-emerald-500 mb-10" style={{ fontFamily: 'Amiri' }}>أ/ محمد القرني</p>
+            <div className="space-y-6">
+               <div className="flex gap-4">
+                  <button onClick={() => setPlayersCount(1)} className={`flex-1 p-5 rounded-3xl flex flex-col items-center gap-2 ${playersCount === 1 ? 'bg-emerald-600 ring-4 ring-emerald-500/20' : 'bg-slate-800'}`}><User /> لاعب واحد</button>
+                  <button onClick={() => setPlayersCount(2)} className={`flex-1 p-5 rounded-3xl flex flex-col items-center gap-2 ${playersCount === 2 ? 'bg-emerald-600 ring-4 ring-emerald-500/20' : 'bg-slate-800'}`}><Users /> لاعبان</button>
+               </div>
+               <input type="text" placeholder="اسم المتسابق الأول" className="w-full p-4 bg-slate-800 rounded-2xl outline-none" value={playerNames.p1} onChange={e => setPlayerNames(p => ({ ...p, p1: e.target.value }))} />
+               {playersCount === 2 && <input type="text" placeholder="اسم المتسابق الثاني" className="w-full p-4 bg-slate-800 rounded-2xl outline-none" value={playerNames.p2} onChange={e => setPlayerNames(p => ({ ...p, p2: e.target.value }))} />}
+               <button disabled={!playerNames.p1 || (playersCount === 2 && !playerNames.p2)} onClick={initGame} className="w-full py-5 bg-emerald-600 rounded-3xl text-xl font-bold active:scale-95 disabled:opacity-30 transition-all">ابدأ سباق المواضيع</button>
             </div>
           </div>
         </div>
       )}
 
-      {view === 'ROUND_OVER' && (
-        <div className="fixed inset-0 bg-[#020617] z-[200] flex flex-col items-center justify-center p-6 animate-in zoom-in text-center">
-          <Zap size={150} className={`mx-auto animate-pulse ${roundWinner === 'P1' ? 'text-emerald-400' : 'text-rose-400'}`} />
-          <h2 className="win-text classic-title text-white my-10">فاز {roundWinner === 'P1' ? pNames.p1 : pNames.p2}</h2>
-          <button onClick={() => { setCurrentRound(prev => prev + 1); setupBoard(); setView('GAME'); }} className="px-16 py-8 bg-blue-600 rounded-[3rem] text-white font-black text-3xl md:text-6xl flex items-center gap-6"><RefreshCw size={50} /> الجولة التالية</button>
+      {gameState === 'PLAYING' && (
+        <div className="max-w-2xl mx-auto flex flex-col items-center">
+          <header className="text-center mb-6">
+            <h2 className="text-2xl font-black opacity-90">ثانوية رضوى</h2>
+            <p className="text-emerald-500" style={{ fontFamily: 'Amiri' }}>أ/ محمد القرني</p>
+          </header>
+
+          <div className="w-full flex justify-between gap-4 mb-6">
+            <div className={`p-4 rounded-2xl flex-1 text-center border-2 ${currentPlayer === 1 ? 'border-emerald-500 bg-emerald-900/30 shadow-lg shadow-emerald-500/20' : 'border-transparent opacity-40'}`}>
+               <div className="text-xs font-bold mb-1">المتسابق الأول</div>
+               <div className="font-black text-lg">{playerNames.p1}</div>
+            </div>
+            <div className={`p-4 rounded-2xl flex-1 text-center border-2 ${currentPlayer === 2 ? 'border-red-500 bg-red-900/30 shadow-lg shadow-red-500/20' : 'border-transparent opacity-40'}`}>
+               <div className="text-xs font-bold mb-1">{playersCount === 2 ? 'المتسابق الثاني' : 'المسار المعادي'}</div>
+               <div className="font-black text-lg">{playersCount === 2 ? playerNames.p2 : 'تحدي الكمبيوتر'}</div>
+            </div>
+          </div>
+
+          <div className="relative overflow-visible pb-10">
+            <svg viewBox="0 0 440 380" className="w-full h-auto drop-shadow-2xl overflow-visible">
+              {grid.map(c => {
+                const x = c.c * 72 + (c.r % 2 === 1 ? 36 : 0) + 40;
+                const y = c.r * 62 + 45;
+                const winning = winningPath.includes(c.id);
+                let fill = "#1e293b";
+                if (c.status === 'correct') fill = c.player === 1 ? "#10b981" : "#ef4444";
+                if (c.status === 'wrong') fill = "#ef4444";
+                if (c.status === 'blocked') fill = "#000000";
+
+                return (
+                  <g key={c.id} transform={`translate(${x},${y})`} onClick={() => openCell(c.id)} className="cursor-pointer group">
+                    <polygon points="0,-40 35,-20 35,20 0,40 -35,20 -35,-20" fill={fill} stroke={winning ? "#fbbf24" : "#334155"} strokeWidth={winning ? 6 : 2} className="transition-all duration-300" />
+                    {c.status === 'empty' && (
+                      <foreignObject x="-30" y="-15" width="60" height="30">
+                        <div className="flex flex-col items-center justify-center h-full text-[10px] font-black text-slate-400 leading-tight text-center">
+                          {c.category}
+                        </div>
+                      </foreignObject>
+                    )}
+                    {winning && celebrating && <polygon points="0,-40 35,-20 35,20 0,40 -35,20 -35,-20" fill="none" stroke="#fbbf24" strokeWidth="10" className="animate-ping opacity-30" />}
+                  </g>
+                );
+              })}
+            </svg>
+          </div>
+          
+          <div className="mt-4 flex gap-4 overflow-x-auto w-full no-scrollbar pb-4">
+             {CATEGORIES.map(cat => (
+               <div key={cat.name} className="flex items-center gap-2 bg-slate-900 px-3 py-1 rounded-full border border-slate-800 shrink-0">
+                  <span className={`w-2 h-2 rounded-full ${cat.color}`}></span>
+                  <span className="text-[10px] font-bold">{cat.name}</span>
+               </div>
+             ))}
+          </div>
         </div>
       )}
 
-      {view === 'MATCH_OVER' && (
-        <div className="fixed inset-0 bg-[#020617] z-[300] flex flex-col items-center justify-center p-6 animate-in zoom-in text-center overflow-hidden">
-          <Trophy size={200} className="text-yellow-400 mx-auto animate-bounce mb-8" />
-          <h2 className="win-title classic-title text-white">بطل المسابقة!</h2>
-          <div className="py-8"><p className="win-sub text-white/70">ألف مبروك للفائز</p><p className={`win-title ${scores.P1 > scores.P2 ? 'text-emerald-400' : 'text-rose-400'}`}>{scores.P1 > scores.P2 ? pNames.p1 : pNames.p2}</p></div>
-          <button onClick={resetAll} className="mt-12 px-16 py-8 bg-white text-blue-950 font-black text-3xl md:text-7xl rounded-[4rem] shadow-2xl">بدء مسابقة جديدة</button>
+      {activeCell !== null && currentQuestion && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/95 backdrop-blur-md animate-in fade-in">
+          <div className="w-full max-w-lg bg-slate-900 border-2 border-slate-800 rounded-[2.5rem] p-8 shadow-2xl relative">
+            <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-emerald-600 px-6 py-2 rounded-full font-black shadow-xl">
+               قسم {currentQuestion.category}
+            </div>
+            <div className="flex justify-between items-center mb-10 mt-2 border-b border-slate-800 pb-4">
+               <span className={`px-4 py-1 rounded-xl text-xs font-bold ${currentPlayer === 1 ? 'bg-emerald-500/20 text-emerald-400' : 'bg-red-500/20 text-red-400'}`}>دور: {currentPlayer === 1 ? playerNames.p1 : (playersCount === 2 ? playerNames.p2 : 'المسار')}</span>
+               <button onClick={() => setActiveCell(null)} className="text-slate-500 hover:text-white"><XCircle /></button>
+            </div>
+            <h3 className="text-2xl font-bold mb-12 leading-relaxed text-right">
+               {currentQuestion.q.split(/(\$.*?\$)/).map((p, i) => p.startsWith('$') ? <span key={i} dir="ltr" className="text-emerald-400 font-mono bg-black/30 px-2 rounded mx-1">{p.replace(/\$/g,'')}</span> : p)}
+            </h3>
+            <div className="grid gap-4">
+              {currentQuestion.options.map((o, i) => (
+                <button key={i} onClick={() => handleAnswer(i === currentQuestion.correct)} className="w-full p-5 text-right bg-slate-800 hover:bg-emerald-600 rounded-2xl transition-all font-bold text-lg flex justify-between items-center group active:scale-95" dir="rtl">
+                  <span className="font-black text-xl">{o}</span>
+                  <ChevronLeft className="opacity-0 group-hover:opacity-100 transition-all"/>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {(gameState === 'WON' || gameState === 'LOST') && (
+        <div className="fixed inset-0 z-[60] bg-slate-950 flex items-center justify-center p-6">
+          <div className="bg-slate-900 p-12 rounded-[4rem] border-b-[12px] border-emerald-600 shadow-2xl text-center animate-in zoom-in">
+            <Trophy size={100} className={`mx-auto mb-6 ${gameState === 'WON' ? 'text-yellow-500 animate-bounce' : 'text-red-500'}`} />
+            <h2 className="text-4xl font-black mb-8">{gameState === 'WON' ? 'مبروك الفوز بالمسار!' : 'انتهى التحدي'}</h2>
+            <div className="flex gap-4 justify-center mb-10">
+               <div className="bg-slate-800 p-4 rounded-3xl w-32">
+                  <div className="text-xs text-slate-500 mb-1">الإجابات</div>
+                  <div className="text-3xl font-black text-emerald-400">{stats.correct}</div>
+               </div>
+               <div className="bg-slate-800 p-4 rounded-3xl w-32">
+                  <div className="text-xs text-slate-500 mb-1">النسبة</div>
+                  <div className="text-3xl font-black text-blue-400">{((stats.correct/(stats.total||1))*100).toFixed(0)}%</div>
+               </div>
+            </div>
+            <button onClick={() => setGameState('LOBBY')} className="w-full py-5 bg-emerald-600 rounded-3xl font-black text-xl active:scale-95 shadow-xl transition-all">العودة للرئيسية</button>
+          </div>
         </div>
       )}
     </div>
   );
 }
-
-```
